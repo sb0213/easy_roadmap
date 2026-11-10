@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ComputedRoadScore, RoadSegment, VehicleMode } from '../types/road';
 import { AVAILABLE_QUICK_TAGS } from '../data/mockRoads';
 import {
@@ -55,6 +55,15 @@ export const RoadDetailSheet: React.FC<RoadDetailSheetProps> = ({
   const [userAttrRating, setUserAttrRating] = useState<number>(4.0);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [voteSubmitted, setVoteSubmitted] = useState<boolean>(false);
+
+  // Reset local state when selected segment changes
+  useEffect(() => {
+    setUserDiffRating(4.0);
+    setUserAttrRating(4.0);
+    setSelectedTagIds([]);
+    setVoteSubmitted(false);
+    setIsScanning(false);
+  }, [segment.id]);
 
   // Category name & color mapping
   const categoryConfig = {
@@ -567,10 +576,18 @@ export const RoadDetailSheet: React.FC<RoadDetailSheetProps> = ({
           <button
             onClick={handleRealtimeScanClick}
             disabled={isScanning}
-            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] text-white font-bold text-sm shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className={`w-full py-3 px-4 rounded-xl active:scale-[0.99] text-white font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+              segment.streetViewAi.isRealtimeUpdated
+                ? 'bg-gradient-to-r from-teal-700 to-emerald-700 hover:from-teal-600 hover:to-emerald-600 shadow-emerald-950/40 border border-emerald-500/40'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-900/30'
+            }`}
           >
             <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-            <span>🔄 현재 도로 클릭: 네이버 최신 거리뷰 실시간 AI 재분석</span>
+            <span>
+              {segment.streetViewAi.isRealtimeUpdated
+                ? '✓ 2차 실시간 AI 재분석 완료 (클릭하여 다시 스캔)'
+                : '🔄 현재 도로 클릭: 네이버 최신 거리뷰 실시간 AI 재분석'}
+            </span>
           </button>
 
           {/* 4 Metric Mini-bars from streetViewAi */}

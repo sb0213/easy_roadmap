@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   VehicleMode,
   RoadSegment,
@@ -55,14 +55,32 @@ export const App: React.FC = () => {
     return map;
   }, [segments, mode]);
 
-  // Selected Segment & Score
+  // Selected Segment & Score (Robust fallback guarantees no blank/crash)
   const selectedSegment = useMemo<RoadSegment>(() => {
-    return segments.find((s) => s.id === selectedSegmentId) || segments[0];
+    return (
+      segments.find((s) => s.id === selectedSegmentId) ||
+      segments[0] ||
+      INITIAL_ROAD_SEGMENTS[0]
+    );
   }, [segments, selectedSegmentId]);
 
   const selectedScore = useMemo<ComputedRoadScore>(() => {
+    if (!selectedSegment) return calculateRoadScore(INITIAL_ROAD_SEGMENTS[0], mode);
     return scoresMap[selectedSegment.id] || calculateRoadScore(selectedSegment, mode);
   }, [scoresMap, selectedSegment, mode]);
+
+  // Carousel ref & auto-scroll to active card
+  const carouselContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!carouselContainerRef.current || !selectedSegment?.id) return;
+    const activeEl = carouselContainerRef.current.querySelector(
+      `[data-segment-id="${selectedSegment.id}"]`
+    );
+    if (activeEl) {
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [selectedSegment?.id]);
 
   // Filtered Segments
   const filteredSegments = useMemo<RoadSegment[]>(() => {
@@ -191,6 +209,8 @@ export const App: React.FC = () => {
   };
 
   const handleSelectSegmentFromRoute = (segmentId: string) => {
+    setActiveFilter('ALL');
+    setSearchQuery('');
     setSelectedSegmentId(segmentId);
     setRightPanelView('DETAIL');
     setMobileTab('DETAIL');
@@ -198,16 +218,21 @@ export const App: React.FC = () => {
   };
 
   const handlePrevSegment = () => {
-    const currentIndex = segments.findIndex((s) => s.id === selectedSegment.id);
-    const prevIndex = (currentIndex - 1 + segments.length) % segments.length;
-    setSelectedSegmentId(segments[prevIndex].id);
+    const list = filteredSegments.length > 0 ? filteredSegments : segments;
+    const currentIndex = list.findIndex((s) => s.id === selectedSegment.id);
+    const prevIndex = currentIndex >= 0 ? (currentIndex - 1 + list.length) % list.length : 0;
+    setSelectedSegmentId(list[prevIndex].id);
   };
 
   const handleNextSegment = () => {
-    const currentIndex = segments.findIndex((s) => s.id === selectedSegment.id);
-    const nextIndex = (currentIndex + 1) % segments.length;
-    setSelectedSegmentId(segments[nextIndex].id);
+    const list = filteredSegments.length > 0 ? filteredSegments : segments;
+    const currentIndex = list.findIndex((s) => s.id === selectedSegment.id);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % list.length : 0;
+    setSelectedSegmentId(list[nextIndex].id);
   };
+
+  const activeStepperList = filteredSegments.length > 0 ? filteredSegments : segments;
+  const currentStepperIndex = activeStepperList.findIndex((s) => s.id === selectedSegment.id);
 
   // Helper for category badge styling
   const getCategoryMeta = (cat: SegmentCategory) => {
@@ -429,6 +454,7 @@ export const App: React.FC = () => {
             {/* Interactive Leaflet Road Map Canvas */}
             <RoadMapCanvas
               segments={filteredSegments}
+              allSegments={segments}
               scoresMap={scoresMap}
               selectedSegmentId={selectedSegmentId}
               mode={mode}
@@ -436,48 +462,54 @@ export const App: React.FC = () => {
             />
 
             {/* FLOATING QUICK CAROUSEL OVER MAP (Bottom) */}
-            <div className="absolute bottom-3 left-3 right-3 z-[350] pointer-events-none">
-              <div className="pointer-events-auto flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                {filteredSegments.map((seg) => {
-                  const segScore = scoresMap[seg.id] || calculateRoadScore(seg, mode);
-                  const isSelected = seg.id === selectedSegment.id;
-                  const catMeta = getCategoryMeta(seg.category);
+            {filteredSegments.length > 0 && (
+              <div className="absolute bottom-3 left-3 right-3 z-[350] pointer-events-none">
+                <div
+                  ref={carouselContainerRef}
+                  className="pointer-events-auto flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none"
+                >
+                  {filteredSegments.map((seg) => {
+                    const segScore = scoresMap[seg.id] || calculateRoadScore(seg, mode);
+                    const isSelected = seg.id === selectedSegment.id;
+                    const catMeta = getCategoryMeta(seg.category);
 
-                  return (
-                    <div
-                      key={seg.id}
-                      onClick={() => handleSelectSegment(seg.id)}
-                      className={`flex-shrink-0 w-64 p-2.5 rounded-xl cursor-pointer transition-all border backdrop-blur-md shadow-xl ${
-                        isSelected
-                          ? 'bg-slate-900/95 border-emerald-400/80 ring-2 ring-emerald-400/40 translate-y-[-2px]'
-                          : 'bg-slate-900/80 border-slate-700/60 hover:bg-slate-900/95 hover:border-slate-500'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${catMeta.color}`}
-                        >
-                          {catMeta.label}
-                        </span>
-                        <div
-                          className="px-1.5 py-0.5 rounded text-[11px] font-extrabold flex items-center gap-1 shadow-sm"
-                          style={{
-                            backgroundColor: `${segScore.heatmapColor}25`,
-                            color: segScore.heatmapColor,
-                            border: `1px solid ${segScore.heatmapColor}50`,
-                          }}
-                        >
-                          <span>★</span>
-                          <span>{segScore.finalOverallScore.toFixed(1)}</span>
+                    return (
+                      <div
+                        key={seg.id}
+                        data-segment-id={seg.id}
+                        onClick={() => handleSelectSegment(seg.id)}
+                        className={`flex-shrink-0 w-64 p-2.5 rounded-xl cursor-pointer transition-all border backdrop-blur-md shadow-xl ${
+                          isSelected
+                            ? 'bg-slate-900/95 border-emerald-400/80 ring-2 ring-emerald-400/40 translate-y-[-2px]'
+                            : 'bg-slate-900/80 border-slate-700/60 hover:bg-slate-900/95 hover:border-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span
+                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${catMeta.color}`}
+                          >
+                            {catMeta.label}
+                          </span>
+                          <div
+                            className="px-1.5 py-0.5 rounded text-[11px] font-extrabold flex items-center gap-1 shadow-sm"
+                            style={{
+                              backgroundColor: `${segScore.heatmapColor}25`,
+                              color: segScore.heatmapColor,
+                              border: `1px solid ${segScore.heatmapColor}50`,
+                            }}
+                          >
+                            <span>★</span>
+                            <span>{segScore.finalOverallScore.toFixed(1)}</span>
+                          </div>
                         </div>
+                        <div className="font-semibold text-xs text-white truncate">{seg.name}</div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">{seg.subName}</div>
                       </div>
-                      <div className="font-semibold text-xs text-white truncate">{seg.name}</div>
-                      <div className="text-[10px] text-slate-400 truncate mt-0.5">{seg.subName}</div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* RIGHT: DETAIL SHEET & ROAD LIST PANEL */}
@@ -517,7 +549,7 @@ export const App: React.FC = () => {
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="text-[11px] font-mono text-slate-500 px-1">
-                  {segments.findIndex((s) => s.id === selectedSegment.id) + 1} / {segments.length}
+                  {currentStepperIndex >= 0 ? currentStepperIndex + 1 : 1} / {activeStepperList.length}
                 </span>
                 <button
                   onClick={handleNextSegment}
@@ -533,6 +565,7 @@ export const App: React.FC = () => {
             <div className="flex-1 overflow-y-auto">
               {rightPanelView === 'DETAIL' ? (
                 <RoadDetailSheet
+                  key={selectedSegment.id}
                   segment={selectedSegment}
                   score={selectedScore}
                   mode={mode}
@@ -546,7 +579,23 @@ export const App: React.FC = () => {
                   <div className="text-xs text-slate-400 font-medium mb-1">
                     총 {filteredSegments.length}개 구간 탐색 중 (클릭 시 지도 이동 및 AI 분석 표시)
                   </div>
-                  {filteredSegments.map((seg) => {
+                  {filteredSegments.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-950/40 rounded-xl border border-slate-800">
+                      <Search className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-300">검색 조건에 맞는 구간이 없습니다.</p>
+                      <p className="text-xs text-slate-500 mt-1">필터를 초기화하거나 다른 검색어를 입력해보세요.</p>
+                      <button
+                        onClick={() => {
+                          setActiveFilter('ALL');
+                          setSearchQuery('');
+                        }}
+                        className="mt-3 px-3 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-emerald-400 font-medium cursor-pointer transition-colors"
+                      >
+                        전체 구간 보기
+                      </button>
+                    </div>
+                  ) : (
+                    filteredSegments.map((seg) => {
                     const score = scoresMap[seg.id] || calculateRoadScore(seg, mode);
                     const isSelected = seg.id === selectedSegment.id;
                     const catMeta = getCategoryMeta(seg.category);
@@ -616,7 +665,7 @@ export const App: React.FC = () => {
                         </div>
                       </div>
                     );
-                  })}
+                  }))}
                 </div>
               )}
             </div>
@@ -666,6 +715,7 @@ export const App: React.FC = () => {
                 <div className="flex-1 relative">
                   <RoadMapCanvas
                     segments={filteredSegments}
+                    allSegments={segments}
                     scoresMap={scoresMap}
                     selectedSegmentId={selectedSegmentId}
                     mode={mode}
@@ -702,6 +752,7 @@ export const App: React.FC = () => {
               {mobileTab === 'DETAIL' && (
                 <div className="flex-1 overflow-y-auto">
                   <RoadDetailSheet
+                    key={selectedSegment.id}
                     segment={selectedSegment}
                     score={selectedScore}
                     mode={mode}

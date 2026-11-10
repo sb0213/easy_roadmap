@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import {
   AlertTriangle,
@@ -17,6 +17,7 @@ import { ComputedRoadScore, RoadSegment, SegmentCategory, VehicleMode } from '..
 
 export interface RoadMapCanvasProps {
   segments: RoadSegment[];
+  allSegments?: RoadSegment[];
   scoresMap: Record<string, ComputedRoadScore>;
   selectedSegmentId: string | null;
   mode: VehicleMode;
@@ -55,6 +56,7 @@ function getShortRoadName(fullName: string): string {
 
 export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
   segments,
+  allSegments,
   scoresMap,
   selectedSegmentId,
   mode,
@@ -64,7 +66,16 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
   const mapRef = useRef<L.Map | null>(null);
   const polylinesLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
+
+  // Compute segments to display on map: ensure selected segment is visible even if filtered out
+  const displaySegments = useMemo<RoadSegment[]>(() => {
+    if (!selectedSegmentId) return segments;
+    const isSelectedInList = segments.some((s) => s.id === selectedSegmentId);
+    if (isSelectedInList || !allSegments) return segments;
+    const selectedObj = allSegments.find((s) => s.id === selectedSegmentId);
+    return selectedObj ? [...segments, selectedObj] : segments;
+  }, [segments, allSegments, selectedSegmentId]);
 
   // Initialize Map Once
   useEffect(() => {
@@ -120,16 +131,17 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
   // Smooth flyTo on selectedSegmentId change
   useEffect(() => {
     if (!mapRef.current || !selectedSegmentId) return;
-    const target = segments.find((s) => s.id === selectedSegmentId);
+    const pool = allSegments && allSegments.length > 0 ? allSegments : segments;
+    const target = pool.find((s) => s.id === selectedSegmentId);
     if (target) {
       mapRef.current.flyTo(target.centerCoord, 13, {
         duration: 0.8,
         easeLinearity: 0.25,
       });
     }
-  }, [selectedSegmentId, segments]);
+  }, [selectedSegmentId, segments, allSegments]);
 
-  // Redraw Polylines & Markers when segments, scoresMap, mode, or selection changes
+  // Redraw Polylines & Markers when displaySegments, scoresMap, mode, or selection changes
   useEffect(() => {
     const map = mapRef.current;
     const polyGroup = polylinesLayerGroupRef.current;
@@ -140,7 +152,7 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
     polyGroup.clearLayers();
     markerGroup.clearLayers();
 
-    segments.forEach((segment) => {
+    displaySegments.forEach((segment) => {
       const score = scoresMap[segment.id];
       const isSelected = segment.id === selectedSegmentId;
       const isRestricted = score?.isRestrictedForBike ?? (mode === 'BIKE' && segment.publicMetrics.isAutoOnly);
@@ -265,7 +277,7 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
 
       markerGroup.addLayer(marker);
     });
-  }, [segments, scoresMap, selectedSegmentId, mode, onSelectSegment]);
+  }, [displaySegments, scoresMap, selectedSegmentId, mode, onSelectSegment]);
 
   // Controls handler
   const handleZoomIn = useCallback(() => {
@@ -281,11 +293,11 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
   }, []);
 
   const handleFitAll = useCallback(() => {
-    if (!mapRef.current || segments.length === 0) return;
-    const allCoords: [number, number][] = segments.flatMap((s) => s.coordinates);
+    if (!mapRef.current || displaySegments.length === 0) return;
+    const allCoords: [number, number][] = displaySegments.flatMap((s) => s.coordinates);
     const bounds = L.latLngBounds(allCoords);
     mapRef.current.fitBounds(bounds, { padding: [50, 50], duration: 0.8 });
-  }, [segments]);
+  }, [displaySegments]);
 
   return (
     <div className="relative w-full h-full min-h-0 overflow-hidden bg-slate-950 font-sans select-none">
@@ -307,7 +319,7 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
             </>
           )}
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-slate-400 font-normal">| {segments.length}개 핵심구간 실시간 스캔</span>
+          <span className="text-slate-400 font-normal">| {displaySegments.length}개 핵심구간 실시간 스캔</span>
         </div>
       </div>
 
@@ -317,7 +329,7 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
           type="button"
           onClick={handleZoomIn}
           title="지도 확대"
-          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
+          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
@@ -325,7 +337,7 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
           type="button"
           onClick={handleZoomOut}
           title="지도 축소"
-          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
+          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
@@ -333,7 +345,7 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
           type="button"
           onClick={handleResetView}
           title="수도권 기본 뷰로 리셋"
-          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
+          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer"
         >
           <RotateCcw className="w-4 h-4" />
         </button>
@@ -341,30 +353,40 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
           type="button"
           onClick={handleFitAll}
           title="전체 도로 한눈에 보기"
-          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
+          className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer"
         >
           <Compass className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Floating Map Legend (Floats above the bottom carousel) */}
-      <div className="absolute bottom-24 left-3 sm:bottom-28 sm:left-4 z-20 pointer-events-auto max-w-[310px]">
-        <div className="p-3 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-md text-xs text-slate-200 transition-all">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
-            <div className="flex items-center gap-1.5 font-bold text-slate-100">
-              <Layers className="w-3.5 h-3.5 text-emerald-400" />
-              <span>도로 안전·풍경 평점 범례</span>
+      {/* Collapsible Floating Map Legend (Above the bottom carousel) */}
+      <div className="absolute bottom-24 left-3 sm:bottom-28 sm:left-4 z-20 pointer-events-auto">
+        {!legendOpen ? (
+          <button
+            type="button"
+            onClick={() => setLegendOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 shadow-xl backdrop-blur-md text-xs font-semibold transition-all active:scale-95 cursor-pointer"
+            title="도로 안전·풍경 평점 범례 보기"
+          >
+            <Layers className="w-3.5 h-3.5 text-emerald-400" />
+            <span>범례 보기</span>
+          </button>
+        ) : (
+          <div className="p-3 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-md text-xs text-slate-200 transition-all max-w-[280px] sm:max-w-[310px]">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+              <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                <span>도로 안전·풍경 평점 범례</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLegendOpen(false)}
+                className="text-[11px] text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 cursor-pointer"
+              >
+                ✕ 닫기
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setLegendOpen(!legendOpen)}
-              className="text-[11px] text-slate-400 hover:text-slate-200 underline"
-            >
-              {legendOpen ? '접기' : '보기'}
-            </button>
-          </div>
 
-          {legendOpen && (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
@@ -400,8 +422,8 @@ export const RoadMapCanvas: React.FC<RoadMapCanvasProps> = ({
                 <span>국토부 TAAS/ITS + 거리뷰 AI 비전 + 집단지성</span>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
