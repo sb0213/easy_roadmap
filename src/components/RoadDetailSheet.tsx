@@ -102,7 +102,7 @@ export const RoadDetailSheet: React.FC<RoadDetailSheetProps> = ({
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl text-slate-100 overflow-hidden flex flex-col font-sans">
+    <div className="w-full bg-slate-900 text-slate-100 flex flex-col font-sans">
       {/* ─────────────────────────────────────────────────────────────
           1. Header & Segment Badge
       ───────────────────────────────────────────────────────────── */}
@@ -177,7 +177,7 @@ export const RoadDetailSheet: React.FC<RoadDetailSheetProps> = ({
       </div>
 
       {/* Main Content Area */}
-      <div className="p-5 space-y-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+      <div className="p-5 space-y-6">
         {/* ─────────────────────────────────────────────────────────────
             2. 3원화 평점 대시보드 (Overall / Difficulty / Attractiveness)
         ───────────────────────────────────────────────────────────── */}

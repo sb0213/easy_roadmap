@@ -180,20 +180,20 @@ export const App: React.FC = () => {
         const updatedTags = [...seg.tags];
 
         for (const tagId of selectedTagIds) {
-          const existingIdx = updatedTags.findIndex((t) => t.tagId === tagId);
+          const quickTag = AVAILABLE_QUICK_TAGS.find((q) => q.tagId === tagId);
+          const existingIdx = updatedTags.findIndex(
+            (t) => t.tagId === tagId || (quickTag && t.label === quickTag.label)
+          );
           if (existingIdx >= 0) {
             updatedTags[existingIdx] = {
               ...updatedTags[existingIdx],
               count: updatedTags[existingIdx].count + 1,
             };
-          } else {
-            const quickTag = AVAILABLE_QUICK_TAGS.find((q) => q.tagId === tagId);
-            if (quickTag) {
-              updatedTags.push({
-                ...quickTag,
-                count: 1,
-              });
-            }
+          } else if (quickTag) {
+            updatedTags.push({
+              ...quickTag,
+              count: 1,
+            });
           }
         }
 
